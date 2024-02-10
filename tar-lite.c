@@ -4,7 +4,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-void add_files_to_archive(char* archive_name, char** file_names, int file_count,int create_flag) 
+int add_files_to_archive(char* archive_name, char** file_names, int file_count,int create_flag) 
 {
     if(create_flag==1)
     {
@@ -12,7 +12,7 @@ void add_files_to_archive(char* archive_name, char** file_names, int file_count,
         if (!archive_file) 
         {
             printf("Error: Could not create archive file.\n");
-            return;
+            return 1;
         }
         // Write the number of files in the archive
         fwrite(&file_count, sizeof(int), 1, archive_file);
@@ -25,10 +25,10 @@ void add_files_to_archive(char* archive_name, char** file_names, int file_count,
         if (!archive_files_count) 
         {
             printf("Error: Could not open archive file.\n");
-            return;
+            return 1;
         }
         // Changing number of files in archive
-        char *count_str = malloc(5);
+        char *count_str = calloc(5,sizeof(char));
         int current_file_count;
         fread(&current_file_count, sizeof(int), 1, archive_files_count);
         current_file_count +=file_count;
@@ -51,7 +51,7 @@ void add_files_to_archive(char* archive_name, char** file_names, int file_count,
             if (!archive_file) 
             {
                 printf("Error: Could not open archive file.\n");
-                return;
+                return 1;
             }
              // Write the filename length and filename
             int filename_length = strlen(file_names[i]);
@@ -106,14 +106,14 @@ void add_files_to_archive(char* archive_name, char** file_names, int file_count,
             if (!archive_file) 
             {
                 printf("Error: Could not open archive file.\n");
-                return;
+                return 1;
             }
             
-
             FILE* file = fopen(file_names[i], "rb");
             if (!file) 
             {
-                printf("Error: Could not open file ''%s''.\n", file_names[i]);
+                printf("Error: Could not open file '%s'.\n", file_names[i]);
+                fclose(archive_file);
                 continue;
             }
             // Get the file size
@@ -144,6 +144,7 @@ void add_files_to_archive(char* archive_name, char** file_names, int file_count,
             fclose(archive_file);
         }
     }
+    return 0;
 }
 
 void list_archive_contents(char* archive_name) 
@@ -250,9 +251,9 @@ void see_archive_file(char* archive_name, char* file_name)
         // Read the filename length and filename
         int filename_length;
         fread(&filename_length, sizeof(int), 1, archive_file);
-        filename = realloc(filename,filename_length+1); //   -------------------Here a leak!
+        filename = realloc(filename,filename_length+1);
         fread(filename, sizeof(char), filename_length, archive_file);
-        filename[filename_length] = '\0';
+        filename[filename_length+1] = '\0';
         fread(type,1,1,archive_file);
         // Check if this is the file we're looking for
         if (strcmp(filename, file_name) == 0) 
@@ -324,7 +325,7 @@ void unarchive(char* archive_name)
     if(!archive_file)
     {
         printf("Can't find archive '%s'\n",archive_name);
-        return;
+        return ;
     }
     // Read the number of files in the archive
     int file_count;
@@ -334,11 +335,10 @@ void unarchive(char* archive_name)
         // Read the filename length and filename
         int filename_length;
         fread(&filename_length, sizeof(int), 1, archive_file);
-        char *filename = malloc(filename_length);
+        char *filename = calloc(filename_length+1,sizeof(char));
         fread(filename, sizeof(char), filename_length, archive_file);
         // Read type of a file
         char type = fgetc(archive_file);
-        filename[filename_length] = '\0';
         if(type == 'd')
         {
             struct stat st = {0};
@@ -393,38 +393,52 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    int err;
     char* flag = argv[1];
     char* archive_name = argv[2];
 
     if (strcmp(flag, "-c") == 0) 
     {
-        char** file_names = malloc(argc+1 * sizeof(char*));
+        char** file_names = calloc(argc+1,sizeof(char*));
+        printf("Allocated **file_names:  %p\n",file_names);
         int file_count = argc - 3;
         for (int i = 0; i < file_count; i++) 
         {
-            file_names[i] = malloc(strlen(argv[i + 3])*sizeof(char));
+            file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
             strcpy(file_names[i],argv[i+3]);
             printf("File name:%s\n",file_names[i]);
         }
-        add_files_to_archive(archive_name, file_names, file_count,1);
-        printf("Archive created successfully.\n");
+
+        err = add_files_to_archive(archive_name, file_names, file_count,1);
+
+        if(err == 0)
+            printf("Archive created successfully.\n");
+        else
+            printf("Failed to create archive.\n");
 
         for(int i=0;i<file_count;i++)
+        {
             free(file_names[i]);
+        }
         free(file_names);
     } 
     else if (strcmp(flag, "-r") == 0) 
     {
-        char** file_names = malloc(argc+1 * sizeof(char*));
+        char** file_names = calloc(argc+1,sizeof(char*));
         int file_count = argc - 3;
         for (int i = 0; i < file_count; i++) 
         {
-            file_names[i] = malloc(strlen(argv[i + 3])*sizeof(char));
+            file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
             strcpy(file_names[i],argv[i+3]);
             printf("File name:%s\n",file_names[i]);
         }
-        add_files_to_archive(archive_name, file_names, file_count,0);
-        printf("Files added to archive successfully.\n");
+        
+        err = add_files_to_archive(archive_name, file_names, file_count,0);
+
+        if(err = 0)
+            printf("Files added to archive successfully.\n");
+        else   
+            printf("Failed to add files to archive\n.");
 
         for(int i=0;i<file_count;i++)
             free(file_names[i]);
