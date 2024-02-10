@@ -35,11 +35,9 @@ int add_files_to_archive(char* archive_name, char** file_names, int file_count,i
         sprintf(count_str,"%d",current_file_count);
         fseek(archive_files_count,0,SEEK_SET);
         fwrite(&current_file_count, sizeof(int), 1, archive_files_count);
-
         fclose(archive_files_count);
         free(count_str);
     }
-
     // Write each file to the archive
     for (int i = 0; i < file_count; i++) 
     {
@@ -114,6 +112,22 @@ int add_files_to_archive(char* archive_name, char** file_names, int file_count,i
             {
                 printf("Error: Could not open file '%s'.\n", file_names[i]);
                 fclose(archive_file);
+                FILE* archive_files_count = fopen(archive_name, "r+b");
+                if (!archive_files_count) 
+                {
+                    printf("Error: Could not open archive file.\n");
+                    return 1;
+                }
+                // Changing number of files in archive to -1
+                char *count_str = calloc(5,sizeof(char));
+                int current_file_count;
+                fread(&current_file_count, sizeof(int), 1, archive_files_count);
+                current_file_count--;
+                sprintf(count_str,"%d",current_file_count);
+                fseek(archive_files_count,0,SEEK_SET);
+                fwrite(&current_file_count, sizeof(int), 1, archive_files_count);
+                fclose(archive_files_count);
+                free(count_str);
                 continue;
             }
             // Get the file size
@@ -159,8 +173,9 @@ void list_archive_contents(char* archive_name)
     // Read the number of files in the archive
     int file_count;
     fread(&file_count, sizeof(int), 1, archive_file);
+    if(feof(archive_file)!=0) file_count =0 ;
     // Read each file from the archive
-    printf("Files in archive:\n");
+    printf("%d files in archive:\n",file_count);
     int dflag = 0;
     int cnt_flind = 0;
 
@@ -211,6 +226,7 @@ void list_archive_contents(char* archive_name)
                 printf("%s\n",filename);
             //Skip the file size and content
             long file_size;
+            
             fread(&file_size, sizeof(long), 1, archive_file);
             fseek(archive_file, file_size, SEEK_CUR);
             if(cnt_flind == 0 && dflag != 0) dflag--;
@@ -315,7 +331,6 @@ void see_archive_file(char* archive_name, char* file_name)
     {
         printf("Error: File %s not found in archive.\n", file_name);
     }
-
     fclose(archive_file);
 }
 
@@ -325,7 +340,7 @@ void unarchive(char* archive_name)
     if(!archive_file)
     {
         printf("Can't find archive '%s'\n",archive_name);
-        return ;
+        return;
     }
     // Read the number of files in the archive
     int file_count;
@@ -400,7 +415,6 @@ int main(int argc, char** argv) {
     if (strcmp(flag, "-c") == 0) 
     {
         char** file_names = calloc(argc+1,sizeof(char*));
-        printf("Allocated **file_names:  %p\n",file_names);
         int file_count = argc - 3;
         for (int i = 0; i < file_count; i++) 
         {
@@ -435,7 +449,7 @@ int main(int argc, char** argv) {
         
         err = add_files_to_archive(archive_name, file_names, file_count,0);
 
-        if(err = 0)
+        if(err == 0)
             printf("Files added to archive successfully.\n");
         else   
             printf("Failed to add files to archive\n.");
