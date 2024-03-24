@@ -3,6 +3,28 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <getopt.h>
+
+const char* help = "Usage: %s <flag> <archive_name> [file1] [file2] ... [fileN]\n"
+                    "Flags:\n"
+                    "-c: Create archive and add files to it.\n"
+                    "-r: Add files to existing archive.\n"
+                    "-l: List all files in archive.\n"
+                    "-u: Unzip archive\n"
+                    "--see: Display contents of a file in the archive.\n"
+                    "--help: Show this help message.\n"
+                    "Examples:\n"
+                    "./tar-lite -c foo.tar-lite 123.txt Makefile foo.c\n"
+                    "./tar-lite -r foo.tar-lite foo2.c Sun.mp3\n"
+                    "./tar-lite -l foo.tar-lite\n"
+                    "./tar-lite --see foo.tar-lite 123.txt\n";
+const char* short_opt = "crlu";
+int flagSee = 0;
+int flagHelp = 0;
+const struct option long_options[] = {
+        {"help",no_argument,&flagHelp,1},
+        {"see",no_argument,&flagSee,1}
+        };
 
 int add_files_to_archive(char* archive_name, char** file_names, int file_count,int create_flag) 
 {
@@ -96,7 +118,6 @@ int add_files_to_archive(char* archive_name, char** file_names, int file_count,i
             for(int k=0;k<dcount;k++)
                 free(dir_files[k]); //---------- Throws double free or corruption (out)
             free(dir_files);
-            
         }
         else
         {
@@ -329,7 +350,7 @@ void see_archive_file(char* archive_name, char* file_name)
     free(filename);
     if (!found) 
     {
-        printf("Error: File %s not found in archive.\n", file_name);
+        printf("flagor: File %s not found in archive.\n", file_name);
     }
     fclose(archive_file);
 }
@@ -391,96 +412,91 @@ void unarchive(char* archive_name)
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || strcmp(argv[1], "--help") == 0) {
-        printf("Usage: %s <flag> <archive_name> [file1] [file2] ... [fileN]\n", argv[0]);
-        printf("Flags:\n");
-        printf("    -c: Create archive and add files to it.\n");
-        printf("    -r: Add files to existing archive.\n");
-        printf("    -l: List all files in archive.\n");
-        printf("    -u: Unzip archive\n");
-        printf("    --see: Display contents of a file in the archive.\n");
-        printf("    --help: Show this help message.\n");
-        printf("Examples:\n");
-        printf("    ./tar-lite -c foo.tar-lite 123.txt Makefile foo.c\n");
-        printf("    ./tar-lite -r foo.tar-lite foo2.c Sun.mp3\n");
-        printf("    ./tar-lite -l foo.tar-lite\n");
-        printf("    ./tar-lite --see foo.tar-lite 123.txt\n");
+    if (argc <= 2 || flagHelp == 1) {
+        printf(help,argv[0]);
         return 0;
     }
 
-    int err;
-    char* flag = argv[1];
+    int flag, err;
     char* archive_name = argv[2];
+    int file_count = argc - 3;
 
-    if (strcmp(flag, "-c") == 0) 
-    {
-        char** file_names = calloc(argc+1,sizeof(char*));
-        int file_count = argc - 3;
-        for (int i = 0; i < file_count; i++) 
-        {
-            file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
-            strcpy(file_names[i],argv[i+3]);
-            printf("File name:%s\n",file_names[i]);
+    while ((flag = getopt_long(argc,argv,short_opt,long_options,NULL)) != -1) {
+        switch (flag) {
+            case 'c': {
+                printf("Option: %c\n",flag);
+                char** file_names = calloc(argc+1,sizeof(char*));
+                for (int i = 0; i < file_count; i++) 
+                {
+                    file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
+                    if(argv[i] == archive_name || argv[i] == flag)
+                        continue;
+                    else
+                        strcpy(file_names[i],argv[i+3]);
+                    printf("File name:%s\n",file_names[i]);
+                }
+
+                err = add_files_to_archive(archive_name,file_names,file_count,1);
+                if (err == 0)
+                    printf("Archive '%s' created successfull\n", archive_name);
+                else
+                    printf("Failed to create '%s'\n", archive_name);
+
+                for(int i=0;i<file_count;i++)
+                    if (file_names!=NULL)
+                        free(file_names[i]);
+                if (file_names!=NULL)
+                    free(file_names);
+                break;
+            }
+            case 'r': {
+                char** file_names = calloc(argc+1,sizeof(char*));
+                for (int i = 0; i < file_count; i++) 
+                {
+                    file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
+                    strcpy(file_names[i],argv[i+3]);
+                    printf("File name:%s\n",file_names[i]);
+                }
+                
+                flag = add_files_to_archive(archive_name, file_names, file_count,0);
+
+                if(flag == 0)
+                    printf("Files added to archive successfully.\n");
+                else   
+                    printf("Failed to add files to archive\n.");
+
+                for(int i=0;i<file_count;i++)
+                    if(file_names[i]!=NULL)
+                        free(file_names[i]);
+                if(file_names!=NULL)
+                    free(file_names);
+                break;
+            }
+            case 'l': {
+                list_archive_contents(archive_name);
+                break;
+            }
+            case 'u': {
+                unarchive(archive_name);
+                break;
+            }
+            case '?': default: {
+                if(flagHelp==0 && flagSee==0) {
+                    printf("Unknown option: %c\n",flag);
+                }
+                break;
+            }
         }
+        if(flagSee == 1) {
+            if (argc < 4) 
+            {
+                printf("flagor: Missing filename argument.\n");
+                return 0;
+            }
 
-        err = add_files_to_archive(archive_name, file_names, file_count,1);
-
-        if(err == 0)
-            printf("Archive created successfully.\n");
-        else
-            printf("Failed to create archive.\n");
-
-        for(int i=0;i<file_count;i++)
-        {
-            free(file_names[i]);
+            char* file_name = argv[3];
+            see_archive_file(archive_name, file_name);
         }
-        free(file_names);
-    } 
-    else if (strcmp(flag, "-r") == 0) 
-    {
-        char** file_names = calloc(argc+1,sizeof(char*));
-        int file_count = argc - 3;
-        for (int i = 0; i < file_count; i++) 
-        {
-            file_names[i] = calloc(strlen(argv[i + 3]),sizeof(char));
-            strcpy(file_names[i],argv[i+3]);
-            printf("File name:%s\n",file_names[i]);
-        }
-        
-        err = add_files_to_archive(archive_name, file_names, file_count,0);
-
-        if(err == 0)
-            printf("Files added to archive successfully.\n");
-        else   
-            printf("Failed to add files to archive\n.");
-
-        for(int i=0;i<file_count;i++)
-            free(file_names[i]);
-        free(file_names);
-    } 
-    else if (strcmp(flag, "-l") == 0) 
-    {
-        list_archive_contents(archive_name);
-    } 
-    else if (strcmp(flag, "--see") == 0) 
-    {
-        if (argc < 4) 
-        {
-            printf("Error: Missing filename argument.\n");
-            return 0;
-        }
-
-        char* file_name = argv[3];
-        see_archive_file(archive_name, file_name);
-    } 
-    else if(strcmp(flag,"-u")==0)
-    {
-        unarchive(archive_name);
     }
-    else 
-    {
-        printf("Error: Invalid flag.\n");
-    }
-
     return 0;
 }
